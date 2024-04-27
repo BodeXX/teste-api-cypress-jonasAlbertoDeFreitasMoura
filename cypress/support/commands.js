@@ -1,25 +1,63 @@
-// ***********************************************
-// This example commands.js shows you how to
-// create various custom commands and overwrite
-// existing commands.
-//
-// For more comprehensive examples of custom
-// commands please read more here:
-// https://on.cypress.io/custom-commands
-// ***********************************************
-//
-//
-// -- This is a parent command --
-// Cypress.Commands.add('login', (email, password) => { ... })
-//
-//
-// -- This is a child command --
-// Cypress.Commands.add('drag', { prevSubject: 'element'}, (subject, options) => { ... })
-//
-//
-// -- This is a dual command --
-// Cypress.Commands.add('dismiss', { prevSubject: 'optional'}, (subject, options) => { ... })
-//
-//
-// -- This will overwrite an existing command --
-// Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
+import { faker } from '@faker-js/faker';
+
+
+let user;
+let accessToken
+let userId;
+
+Cypress.Commands.add('criarUser', function () {
+  return cy
+    .request('POST', '/users', {
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      password: '123456',
+    })
+    .then((response) => {
+      user = response.body;
+      return response;
+    });
+});
+
+Cypress.Commands.add('loginUser', function () {
+  if (!user) {
+    throw new Error('Usuário não está definido.');
+  }
+
+  return cy.request('POST', '/auth/login', {
+    email: user.email,
+    password: '123456',
+  }).then((response) => {
+    accessToken = response.body.accessToken;
+    userId = response.body.id;
+  });
+});
+
+Cypress.Commands.add('promoteUser', (accessToken) => {
+  return cy.request({
+    method: 'PATCH',
+    url: '/users/admin',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+});
+
+Cypress.Commands.add('promoteUserCritico', (accessToken) => {
+  return cy.request({
+    method: 'PATCH',
+    url: '/users/apply',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+});
+
+Cypress.Commands.add('deleteUser', function (userId,accessToken) {
+  cy.request({
+    method: 'DELETE',
+    url: `/users/${userId}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+});

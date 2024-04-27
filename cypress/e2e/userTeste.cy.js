@@ -1,7 +1,30 @@
 import { allLocales, faker } from '@faker-js/faker';
 
+
+
+let idUser;
+let user;
+let accessToken;
+let responselog;
+
+
 describe('Testes de rotas /users', function () {
   describe('Testes de Bad requests', function () {
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
+
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
+
+
+          cy.promoteUser(accessToken).then((response) => {
+            expect(response.status).to.equal(204);
+          });
+        });
+      });
+    });
     it('Deve receber Bad request ao tentar cadastrar um usuário sem e-mail', function () {
       cy.request({
         method: 'POST',
@@ -118,558 +141,338 @@ describe('Testes de rotas /users', function () {
         expect(response.body.email).to.be.undefined;
       });
     });
+
+    it('Deve receber Bad request ao tentar fazer Review a movie com score acima de 5', function () {
+      cy.request({
+        method: 'POST',
+        url: '/users/review',
+        body: {
+          "movieId": 2,
+          "score": 6,
+          "reviewText": "HACK"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        failOnStatusCode: false
+      }).then((response) => {
+        expect(response.status).to.equal(400);
+        expect(response.body.error).to.contain('Bad Request');
+      });
+    });
   });
-});
 
 
-describe('Teste de criação e consulta de usuário', function () {
-  let userId;
+  describe('Teste de criação e consulta de usuário', function () {
+
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        user = response.body;
+        responselog = response;
+      });
+    });
+
+    it('Deve ser possível criar um novo usuário', function () {
+
+      expect(responselog.status).to.equal(201);
+      expect(user.type).to.exist;
+      expect(user.email).to.exist;
+      expect(user.name).to.exist;
+      expect(user.id).to.be.exist;
+    });
+
 
     it('Não deve ser possivel cadastrar um usuário com e-mail já em uso', function () {
-    const email = faker.internet.email();
-  
-    cy.request({
-      method: 'POST',
-      url: '/users',
-      body: {
-        name: 'user teste',
-        email: email,
-        password: 'teste123'
-      },
-      failOnStatusCode: false,
-    });
-  
-    cy.request({
-      method: 'POST',
-      url: '/users',
-      body: {
-        name: 'user teste 2',
-        email: email,
-        password: 'teste123'
-      },
-      failOnStatusCode: false,
-    }).then((response) => {
-      expect(response.status).to.equal(409);
-      expect(response.body).to.be.an('object');
-      expect(response.body.error).to.exist;
-    });
-  });
 
-    it('Deve ser possível criar um novo usuário e verificar os dados', function () {
-    const email = faker.internet.email();
-    const name = faker.internet.userName();
-    const password = faker.internet.password({ length: 12 });
-  
-    cy.request({
-      method: 'POST',
-      url: '/users',
-      body: {
-        name: name,
-        email: email,
-        password: password,
-      },
-      failOnStatusCode: false,
-    }).then((response) => {
-      expect(response.status).to.equal(201);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('id')
-      expect(response.body).to.have.property('name', name);
-      expect(response.body).to.have.property('email', email);
-
-      userId = response.body.id;
-      });
-    });
-    after(() => {
       cy.request({
-        method: 'DELETE',
-        url: `/users/${userId}`,
+        method: 'POST',
+        url: '/users',
+        body: {
+          name: 'user teste 2',
+          email: user.email,
+          password: 'teste123'
+        },
         failOnStatusCode: false,
-      });
-  });
-});
-
-describe('Teste de promoção de usuario', function () {
-  let token;
-  let userId;
-  
-    it('Deve ser possivel promover um usuário comum a Administrador', function () {
-
-      const email = faker.internet.email();
-      const name = faker.internet.userName();
-      const password = faker.internet.password({ length: 12 });
-
-      cy.request({
-          method: 'POST',
-          url: '/users',
-          body: {
-              name: name,
-              email: email,
-              password: password,
-          },
-          failOnStatusCode: false
-
       }).then((response) => {
-          expect(response.status).to.equal(201);
-          expect(response.body).to.be.an('object');
-          expect(response.body).to.have.property('id')
-          expect(response.body).to.have.property('name', name);
-          expect(response.body).to.have.property('email', email);
-
-          userId = response.body.id;
-
-          cy.request({
-              method: 'POST',
-              url: '/auth/login',
-              body: {
-                  email: email,
-                  password: password,
-              },
-              failOnStatusCode: false
-
-          }).then((loginResponse) => {
-              expect(loginResponse.status).to.equal(200);
-              expect(loginResponse.body).to.be.an('object');
-              expect(loginResponse.body).to.have.property('accessToken');
-
-              token = loginResponse.body.accessToken;
-
-              // Promove a admin
-              cy.request({
-                  method: 'PATCH',
-                  url: `/users/admin`,
-                  headers: {
-                      Authorization: `Bearer ${token}`
-                  },
-                  failOnStatusCode: false
-              }).then((response) => {
-                  expect(response.status).to.equal(204);
-              });
-
-              // Obtém os detalhes do usuário promovido
-              cy.request({
-                  method: 'GET',
-                  url: `/users/${userId}`,
-                  headers: {
-                      Authorization: `Bearer ${token}`
-                  },
-                  failOnStatusCode: false
-              }).then((response) => {
-                  expect(response.status).to.equal(200);
-                  expect(response.body.type).to.equal(1);
-              });
-          });
-      });
-  });
-
-    it('Deve ser possivel promover um usuário comum a critico', function () {
-    const email = faker.internet.email();
-    const name = faker.internet.userName();
-    const password = faker.internet.password({ length: 12 });
-
-    cy.request({
-        method: 'POST',
-        url: '/users',
-        body: {
-            name: name,
-            email: email,
-            password: password,
-        },
-        failOnStatusCode: false
-
-    }).then((response) => {
-        expect(response.status).to.equal(201);
+        expect(response.status).to.equal(409);
         expect(response.body).to.be.an('object');
-        expect(response.body).to.have.property('id')
-        expect(response.body).to.have.property('name', name);
-        expect(response.body).to.have.property('email', email);
-
-        userId = response.body.id;
-
-        cy.request({
-            method: 'POST',
-            url: '/auth/login',
-            body: {
-                email: email,
-                password: password,
-            },
-            failOnStatusCode: false
-
-        }).then((loginResponse) => {
-            expect(loginResponse.status).to.equal(200);
-            expect(loginResponse.body).to.be.an('object');
-            expect(loginResponse.body).to.have.property('accessToken');
-
-            token = loginResponse.body.accessToken;
-
-            // Promove a admin
-            cy.request({
-                method: 'PATCH',
-                url: `/users/apply`,
-                headers: {
-                    Authorization: `Bearer ${token}`
-                },
-                failOnStatusCode: false
-            }).then((response) => {
-                expect(response.status).to.equal(204);
-            });
-
-            // Obtém os detalhes do usuário promovido
-            cy.request({
-                method: 'GET',
-                url: `/users/${userId}`,
-                headers: {
-                    Authorization: `Bearer ${token}`
-                },
-                failOnStatusCode: false
-            }).then((response) => {
-                expect(response.status).to.equal(200);
-                expect(response.body.type).to.equal(2);
-            });
-        });
-    });
-});
-
-describe('Teste de listar usuário e busca pelo id', function () {
-  const email = faker.internet.email();
-  const name = faker.internet.userName();
-  const password = faker.internet.password({ length: 12 });
-    it('Deve ser possivel listar todos os usuários', function () {
-      const email = faker.internet.email();
-      const name = faker.internet.userName();
-      const password = faker.internet.password({ length: 12 });
-  
-      cy.request({
-          method: 'POST',
-          url: '/users',
-          body: {
-              name: name,
-              email: email,
-              password: password,
-          },
-          failOnStatusCode: false
-  
-      }).then((response) => {
-          expect(response.status).to.equal(201);
-          expect(response.body).to.be.an('object');
-          expect(response.body).to.have.property('id')
-          expect(response.body).to.have.property('name', name);
-          expect(response.body).to.have.property('email', email);
-  
-          const userId = response.body.id;
-  
-          cy.request({
-          method: 'POST',
-          url: '/auth/login',
-          body: {
-
-                email: email,
-                password: password,
-            },
-                failOnStatusCode: false
-      }).then((loginResponse) => {
-          expect(loginResponse.status).to.equal(200);
-          expect(loginResponse.body).to.be.an('object');
-          expect(loginResponse.body).to.have.property('accessToken');
-        
-          token = loginResponse.body.accessToken;
-        
-          cy.wrap(token).as('accessToken');
-        
-            
-          cy.request({
-             method: 'PATCH',
-              url: `/users/admin`,
-              headers: {
-                  Authorization: `Bearer ${token}`
-                },
-              failOnStatusCode: false
-            }).then((response) => {
-              expect(response.status).to.equal(204);
-        
-               
-            cy.request({
-                  method: 'GET',
-                  url: '/users',
-                  headers: {
-                  Authorization: `Bearer ${token}`
-                  },
-                  failOnStatusCode: false
-                }).then((response) => {
-                  expect(response.status).to.equal(200);
-          });
-        });
+        expect(response.body.error).to.exist;
+        expect(response.body.message).to.exist;
       });
     });
   });
 
-    it('Deve ser possivel buscar um usuário pelo id', function () {
-    cy.request({
-        method: 'POST',
-        url: '/users',
-        body: {
-            name: name,
-            email: email,
-            password: password,
-        },
-        failOnStatusCode: false
+  describe('Teste de promoção de usuario', function () {
 
-    }).then((response) => {
-      expect(response.status).to.equal(201);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('id')
-      expect(response.body).to.have.property('name', name);
-      expect(response.body).to.have.property('email', email);
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
 
-      const userId = response.body.id;
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
 
+
+          cy.promoteUser(accessToken).then((response) => {
+            expect(response.status).to.equal(204);
+          });
+        });
+      });
+    });
+
+    it('Deve ser possível promover um usuário comum a Administrador', function () {
       cy.request({
-      method: 'POST',
-      url: '/auth/login',
-      body: {
+        method: 'GET',
+        url: `/users/${idUser}`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+        expect(response.body.type).to.equal(1);
+        expect(response.body.id).to.deep.equal(idUser);
 
-      email: email,
-      password: password,
-    },
-            failOnStatusCode: false
-    }).then((loginResponse) => {
-      expect(loginResponse.status).to.equal(200);
-      expect(loginResponse.body).to.be.an('object');
-      expect(loginResponse.body).to.have.property('accessToken');
-      
-      token = loginResponse.body.accessToken;
-      
-      cy.wrap(token).as('accessToken');
-      
-          
+      });
+    });
+
+    it('Deve ser possível promover um usuário comum a crítico', function () {
+      cy.request({
+        method: 'PATCH',
+        url: '/users/apply',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(204);
+
         cy.request({
-          method: 'PATCH',
-          url: `/users/admin`,
+          method: 'GET',
+          url: `/users/${idUser}`,
           headers: {
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${accessToken}`
           },
-        failOnStatusCode: false
-          }).then((response) => {
-          expect(response.status).to.equal(204);
-      
-             
-          cy.request({
-            method: 'GET',
-            url: `/users/${userId}`,
-            headers: {
-            Authorization: `Bearer ${token}`
-            },
           failOnStatusCode: false
         }).then((response) => {
           expect(response.status).to.equal(200);
+          expect(response.body.type).to.equal(2);
         });
       });
     });
   });
-});
-});
 
-});
+  describe('Teste de listar usuário e busca pelo id', function () {
 
-describe('Teste de inativar e deletar usuário pelo id', function () {
-  const email = faker.internet.email();
-  const name = faker.internet.userName();
-  const password = faker.internet.password({ length: 12 });
-  let token;
-  it('Deve ser possivel deletar um usuário pelo id com autorização admin', function (){
-  
-      cy.request({
-          method: 'POST',
-          url: '/users',
-          body: {
-              name: name,
-              email: email,
-              password: password,
-          },
-          failOnStatusCode: false
-  
-      }).then((response) => {
-          expect(response.status).to.equal(201);
-          expect(response.body).to.be.an('object');
-          expect(response.body).to.have.property('id')
-          expect(response.body).to.have.property('name', name);
-          expect(response.body).to.have.property('email', email);
-  
-          const userId = response.body.id;
-  
-          cy.request({
-          method: 'POST',
-          url: '/auth/login',
-          body: {
-  
-                email: email,
-                password: password,
-            },
-                failOnStatusCode: false
-      }).then((loginResponse) => {
-          expect(loginResponse.status).to.equal(200);
-          expect(loginResponse.body).to.be.an('object');
-          expect(loginResponse.body).to.have.property('accessToken');
-        
-          token = loginResponse.body.accessToken;
-        
-          cy.request({
-             method: 'PATCH',
-              url: `/users/admin`,
-              headers: {
-                  Authorization: `Bearer ${token}`
-                },
-              failOnStatusCode: false
-            }).then((response) => {
-              expect(response.status).to.equal(204);
-        
-               
-              cy.request({
-                method: 'DELETE',
-                url: `/users/${userId}`,
-                headers: {
-                    Authorization: `Bearer ${token}`
-                },
-                failOnStatusCode: false
-            }).then((response) => {
-                expect(response.status).to.equal(204);
-            });
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
+
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
+
+
+          cy.promoteUser(accessToken).then((response) => {
+            expect(response.status).to.equal(204);
           });
         });
       });
+    });
+
+    afterEach(function () {
+      cy.deleteUser(idUser, accessToken).then((response) => {
+        expect(response.status).to.equal(204);
       });
-  it('Deve ser possivel inativar usuário com autorização admin', function () {
-    cy.request({
-      method: 'POST',
-      url: '/users',
-      body: {
-          name: name,
-          email: email,
-          password: password,
-      },
-      failOnStatusCode: false
+    });
 
-  }).then((response) => {
-      expect(response.status).to.equal(201);
-      expect(response.body).to.be.an('object');
-      expect(response.body).to.have.property('id')
-      expect(response.body).to.have.property('name', name);
-      expect(response.body).to.have.property('email', email);
+    it('Deve ser possivel listar todos os usuários', function () {
+      cy.request({
+        method: 'GET',
+        url: '/users',
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
 
-      const userId = response.body.id;
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+        expect(response.body).to.be.an('array').that.is.not.empty;
+        response.body.forEach(user => {
+          expect(user).to.be.an('object');
+          expect(user).to.have.property('id');
+          expect(user).to.have.property('name');
+          expect(user).to.have.property('email');
+        });
+      });
+    });
+
+    it('Deve ser possivel buscar um usuário pelo id', function () {
 
       cy.request({
-      method: 'POST',
-      url: '/auth/login',
-      body: {
+        method: 'GET',
+        url: `/users/${idUser}`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+        expect(response.body).to.be.an('object');
+        expect(response.body).to.have.property('id').to.equal(idUser);
+        expect(response.body).to.have.property('name').to.deep.equal(response.body.name);
+        expect(response.body).to.have.property('email').to.deep.equal(response.body.email);
+      });
+    });
+  });
 
-            email: email,
-            password: password,
-        },
-            failOnStatusCode: false
-  }).then((loginResponse) => {
-      expect(loginResponse.status).to.equal(200);
-      expect(loginResponse.body).to.be.an('object');
-      expect(loginResponse.body).to.have.property('accessToken');
-    
-      token = loginResponse.body.accessToken;
-        
-      cy.request({
-         method: 'PATCH',
-          url: `/users/admin`,
-          headers: {
-              Authorization: `Bearer ${token}`
-            },
-          failOnStatusCode: false
-        }).then((response) => {
-          expect(response.status).to.equal(204);
-    
-           
-          cy.request({
-            method: 'PATCH',
-            url: `/users/inactivate`,
-            headers: {
-                Authorization: `Bearer ${token}`
-            },
-            failOnStatusCode: false
-        }).then((response) => {
+
+  describe('Teste de inativar e deletar usuário pelo id', function () {
+    let user;
+    let accessToken;
+
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
+
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
+
+          cy.promoteUser(accessToken).then((response) => {
             expect(response.status).to.equal(204);
+          });
+        });
+      });
+    });
+
+    it('Deve deletar usuário', function () {
+      cy.deleteUser(idUser, accessToken).then((response) => {
+        expect(response.status).to.equal(204);
+      });
+    });
+
+    it('Deve inativar usuário', function () {
+      cy.request({
+        method: 'PATCH',
+        url: '/users/inactivate',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(204);
+      });
+    });
+  });
+
+
+  describe('Teste de atualizar usuário pelo id', function () {
+    let user;
+    let accessToken;
+    let idUser;
+
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
+
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
+
+          cy.promoteUser(accessToken).then(() => {
+            expect(response.status).to.equal(200);
+          });
+        });
+      });
+    });
+
+    afterEach(function () {
+      cy.deleteUser(idUser, accessToken).then((response) => {
+        expect(response.status).to.equal(204);
+      });
+    });
+
+    it('Deve ser possível atualizar dados do usuário pelo id', function () {
+      let novoNome = 'Nome atualizado';
+
+      expect(user.name).to.exist;
+      expect(user.id).to.exist;
+
+      cy.request({
+        method: 'PUT',
+        url: `/users/${idUser}`,
+        body: {
+          name: novoNome,
+          password: 'novaSenha'
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+
+        cy.request({
+          method: 'GET',
+          url: `/users/${idUser}`,
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        }).then((response) => {
+          expect(response.body.name).to.equal(novoNome);
+          expect(response.body.name).to.not.equal(user.name);
+          expect(response.body.id).to.equal(idUser);
         });
       });
     });
   });
-  });  
 
+  describe('Teste de Review a movie e list reviews', function () {
+    let user;
+    let accessToken;
+    let idUser;
 
-  })    
-      
-describe ('Teste de atualizar usuário pelo id', function () {
-  const email = faker.internet.email();
-  const name = faker.internet.userName();
-  const password = faker.internet.password({ length: 12 });
-  let token;
+    beforeEach(function () {
+      cy.criarUser().then((response) => {
+        idUser = response.body.id;
+        user = response.body;
 
-  it('Deve ser possivel atualizar usuário pelo id', function () {
-  cy.request({
-    method: 'POST',
-    url: '/users',
-    body: {
-        name: name,
-        email: email,
-        password: password,
-    },
-    failOnStatusCode: false
+        cy.loginUser(user.email, '123456').then((response) => {
+          accessToken = response.body.accessToken;
 
-}).then((response) => {
-  expect(response.status).to.equal(201);
-  expect(response.body).to.be.an('object');
-  expect(response.body).to.have.property('id')
-  expect(response.body).to.have.property('name', name);
-  expect(response.body).to.have.property('email', email);
+          cy.promoteUser(accessToken).then(() => {
+            expect(response.status).to.equal(200);
+          });
+        });
+      });
+    });
 
-  const userId = response.body.id;
-
-  cy.request({
-  method: 'POST',
-  url: '/auth/login',
-  body: {
-
-  email: email,
-  password: password,
-},
-        failOnStatusCode: false
-}).then((loginResponse) => {
-  expect(loginResponse.status).to.equal(200);
-  expect(loginResponse.body).to.be.an('object');
-  expect(loginResponse.body).to.have.property('accessToken');
-  
-  token = loginResponse.body.accessToken;
-  
-      
-    cy.request({
-      method: 'PATCH',
-      url: `/users/admin`,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-    failOnStatusCode: false
-      }).then((response) => {
-      expect(response.status).to.equal(204);
-  
-         
+    it('Deve realizar um Review a movie', function () {
       cy.request({
-        method: 'PUT',
-        url: `/users/${userId}`,
-        headers: {
-        Authorization: `Bearer ${token}`
+        method: 'POST',
+        url: '/users/review',
+        body: {
+          "movieId": 2,
+          "score": 5,
+          "reviewText": "HACK"
         },
-      failOnStatusCode: false
-    }).then((response) => {
-      expect(response.status).to.equal(200);
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(201);
+        expect(response.headers).to.have.property('date');
+      });
+    });
+
+
+    it('Deve realizar um Review a movie', function () {
+      cy.request({
+        method: 'GET',
+        url: '/users/review/all',
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+        expect(response.body).to.be.an('array');
+      });
     });
   });
-});
-});
-});
-});
 
-
+});
