@@ -1,6 +1,67 @@
 import { allLocales, faker } from '@faker-js/faker';
 
 describe('Testes da rota /movies', function () {
+  describe('Bad Request - Criar e Atualizar Filme', () => {
+    let idUser;
+  let user;
+  let accessToken;
+  let filmeCriadoId;
+
+  beforeEach(function () {
+    cy.criarUser().then((response) => {
+      idUser = response.body.id;
+      user = response.body;
+
+      cy.loginUser(user.email, '123456').then((response) => {
+        accessToken = response.body.accessToken;
+
+        cy.promoteUser(accessToken).then((response) => {
+          expect(response.status).to.equal(204);
+        });
+      });
+    });
+  });
+    it('Deve retornar um erro 400 ao tentar criar um filme sem título', () => {
+        cy.request({
+            method: 'POST',
+            url: '/movies',
+            body: {
+                "genre": "Ação",
+                "description": "Um filme de ação emocionante.",
+                "durationInMinutes": 120,
+                "releaseYear": 2022
+            },
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            failOnStatusCode: false
+        }).then((response) => {
+            expect(response.status).to.equal(400);
+            expect(response.body.error).to.equal('Bad Request');
+        });
+    });
+
+    it('Deve retornar um erro 400 ao tentar atualizar um filme sem fornecer o ID', () => {
+        cy.request({
+            method: 'PUT',
+            url: '/movies',
+            body: {
+                "title": "Novo Título",
+                "genre": "Comédia",
+                "description": "Um filme engraçado.",
+                "durationInMinutes": 90,
+                "releaseYear": 2023
+            },
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            failOnStatusCode: false
+        }).then((response) => {
+            expect(response.status).to.equal(404);
+            expect(response.body.error).to.equal('Not Found');
+        });
+    });
+});
   describe('Teste de consulta de filmes', function () {
     it('Deve consultar lista de filmes existentes', function () {
       cy.request({
